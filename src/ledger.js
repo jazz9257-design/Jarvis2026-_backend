@@ -1,5 +1,7 @@
 import { claimHash, beneficiaryMateriality } from './leadtime.js';
 
+const jsonb = value => value == null ? null : JSON.stringify(value);
+
 export async function insertSighting(pool, sighting) {
   const hash = sighting.claimHash ?? claimHash(sighting.claimText);
   const { rows } = await pool.query(`
@@ -51,7 +53,7 @@ export async function insertMarketSnapshot(pool, sightingId, snapshot) {
     snapshot.sourceName,
     snapshot.sourceKind,
     snapshot.status,
-    snapshot.rawPayload ?? null,
+    jsonb(snapshot.rawPayload),
     snapshot.missingReason ?? null
   ]);
   return rows[0];
@@ -103,7 +105,7 @@ export async function insertBeneficiaryResolution(pool, row) {
     row.materialityRatioTotalRevenue ?? ratios.ratioTotalRevenue,
     row.materialityRatioSegmentRevenue ?? ratios.ratioSegmentRevenue,
     row.qualitativeMateriality ?? null, row.materialityStatus ?? 'UNRESOLVED',
-    row.evidence ?? {}, row.notes ?? null
+    jsonb(row.evidence ?? {}), row.notes ?? null
   ]);
   return rows[0];
 }
@@ -130,7 +132,7 @@ export async function insertBeneficiaryMarketSnapshot(pool, resolutionId, snapsh
     snapshot.sourceName,
     snapshot.sourceKind,
     snapshot.status,
-    snapshot.rawPayload ?? null,
+    jsonb(snapshot.rawPayload),
     snapshot.missingReason ?? null
   ]);
   return rows[0];
@@ -169,7 +171,7 @@ export async function insertAssessment(pool, row) {
     row.sightingId, row.beneficiaryResolutionId ?? null,
     row.jarvisState, row.argusRecognition, row.argusExecution,
     row.sentinelState, row.stage, row.materialityReason ?? null,
-    row.failedGates ?? [], row.recognitionBasis ?? {}, row.executionBasis ?? {},
+    jsonb(row.failedGates ?? []), jsonb(row.recognitionBasis ?? {}), jsonb(row.executionBasis ?? {}),
     row.decision, row.createdBy ?? 'jarvis-backend'
   ]);
   return rows[0];
