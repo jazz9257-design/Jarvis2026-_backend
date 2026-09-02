@@ -29,9 +29,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     try {
       const db = await pool.query("SELECT to_regclass('public.sightings') AS sightings_table, now() AS db_time");
-      return json(res, 200, {
+      const ready = Boolean(db.rows[0].sightings_table);
+      return json(res, ready ? 200 : 503, {
         service: 'jarvis2026-backend',
-        status: db.rows[0].sightings_table ? 'READY' : 'MIGRATION_REQUIRED',
+        status: ready ? 'READY' : 'MIGRATION_REQUIRED',
         hourlyScanEnabled: process.env.ENABLE_HOURLY_SCAN === 'true',
         db: db.rows[0],
         updateRunning,
@@ -56,7 +57,11 @@ const server = http.createServer(async (req, res) => {
 if (process.env.ENABLE_HOURLY_SCAN === 'true') {
   cron.schedule('0 * * * *', () => {
     guardedUpdate().catch(error => console.error('hourly update failed', error));
-  }, { timezone: process.env.TZ || 'America/Chicago' });
+  }, {
+    timezone: process.env.TZ || 'America/Chicago',
+    noOverlap: true,
+    name: 'jarvis-hourly-system-update'
+  });
 }
 
 server.listen(port, () => {
