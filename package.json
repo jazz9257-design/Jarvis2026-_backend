@@ -1,0 +1,16 @@
+{
+  "name": "jarvis2026-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test",
+    "migrate": "node scripts/migrate.js",
+    "db:check": "node scripts/db-check.js",
+    "crypto:uni": "node scripts/run-uniswap-fee-check.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
