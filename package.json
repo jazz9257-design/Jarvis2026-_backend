@@ -6,6 +6,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node src/index.js",
+    "start:prod": "npm run migrate && node src/index.js",
     "test": "node --test",
     "migrate": "node scripts/migrate.js",
     "db:check": "node scripts/db-check.js",
