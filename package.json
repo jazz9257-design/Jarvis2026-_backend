@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=24" },
   "scripts": {
     "start": "node src/index.js",
-    "start:prod": "npm run migrate && node src/index.js",
     "test": "node --test",
     "migrate": "node scripts/migrate.js",
     "db:check": "node scripts/db-check.js",
@@ -15,7 +14,7 @@
     "stock:edgar": "node scripts/run-edgar-smoke.js"
   },
   "dependencies": {
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.6.0",
     "pg": "^8.13.1"
   }
 }
