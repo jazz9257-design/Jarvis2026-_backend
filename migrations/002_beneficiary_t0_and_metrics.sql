@@ -81,7 +81,10 @@ CREATE TABLE IF NOT EXISTS market_sessions (
   PRIMARY KEY(exchange, session_date)
 );
 
-CREATE OR REPLACE VIEW lead_time_report AS
+-- PostgreSQL cannot use CREATE OR REPLACE VIEW when the existing view's column identity/order changes.
+-- Drop and recreate because this migration is itself versioned and transactionally applied.
+DROP VIEW IF EXISTS lead_time_report;
+CREATE VIEW lead_time_report AS
 WITH first_recognition AS (
   SELECT DISTINCT ON (sighting_id)
     sighting_id,
