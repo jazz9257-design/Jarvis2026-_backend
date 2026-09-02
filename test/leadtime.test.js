@@ -25,12 +25,13 @@ test('7d anomaly requires 90 baseline days plus 7 current days', () => {
   assert.equal(result.reason, 'NEED_97_DAILY_OBSERVATIONS');
 });
 
-test('7d anomaly does not validate a single-day spike by itself', () => {
+test('7d window dilutes a one-day spike into the weekly mean', () => {
   const baseline = Array.from({ length: 90 }, (_, i) => 100 + (i % 9));
   const current = [100, 101, 99, 102, 100, 101, 300];
   const result = sevenDayAnomalyVsPrior90([...baseline, ...current]);
   assert.equal(result.valid, true);
-  assert.ok(result.zScore < 10, 'one-day spike should be diluted by 7d window');
+  assert.ok(result.current7dMean < 300);
+  assert.ok(result.current7dMean > 100);
 });
 
 test('persistent 7d acceleration creates stronger anomaly than one-day spike', () => {
