@@ -8,11 +8,11 @@ const port = Number(process.env.PORT ?? 3000);
 let updateRunning = false;
 let lastUpdate = null;
 
-async function guardedUpdate() {
+async function guardedUpdate(triggerType = 'MANUAL') {
   if (updateRunning) return { status: 'SKIPPED', reason: 'UPDATE_ALREADY_RUNNING' };
   updateRunning = true;
   try {
-    lastUpdate = await runSystemUpdate(pool);
+    lastUpdate = await runSystemUpdate(pool, { triggerType });
     return lastUpdate;
   } finally {
     updateRunning = false;
@@ -28,8 +28,8 @@ function json(res, status, body) {
 const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     try {
-      const db = await pool.query("SELECT to_regclass('public.sightings') AS sightings_table, now() AS db_time");
-      const ready = Boolean(db.rows[0].sightings_table);
+      const db = await pool.query("SELECT to_regclass('public.sightings') AS sightings_table, to_regclass('public.system_runs') AS system_runs_table, now() AS db_time");
+      const ready = Boolean(db.rows[0].sightings_table && db.rows[0].system_runs_table);
       return json(res, ready ? 200 : 503, {
         service: 'jarvis2026-backend',
         status: ready ? 'READY' : 'MIGRATION_REQUIRED',
@@ -43,11 +43,20 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'GET' && req.url === '/latest-system-update') {
+    try {
+      const { rows } = await pool.query('SELECT * FROM latest_system_run');
+      return json(res, rows.length ? 200 : 404, rows[0] ?? { error: 'NO_SYSTEM_RUN_YET' });
+    } catch (error) {
+      return json(res, 503, { error: 'DB_UNAVAILABLE', detail: error.message });
+    }
+  }
+
   if (req.method === 'POST' && req.url === '/run-system-update') {
     const configured = process.env.RUN_SYSTEM_UPDATE_SECRET;
     const supplied = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!configured || supplied !== configured) return json(res, 401, { error: 'UNAUTHORIZED' });
-    const result = await guardedUpdate();
+    const result = await guardedUpdate('MANUAL');
     return json(res, 200, result);
   }
 
@@ -56,7 +65,7 @@ const server = http.createServer(async (req, res) => {
 
 if (process.env.ENABLE_HOURLY_SCAN === 'true') {
   cron.schedule('0 * * * *', () => {
-    guardedUpdate().catch(error => console.error('hourly update failed', error));
+    guardedUpdate('HOURLY').catch(error => console.error('hourly update failed', error));
   }, {
     timezone: process.env.TZ || 'America/Chicago',
     noOverlap: true,
