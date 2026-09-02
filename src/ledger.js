@@ -8,6 +8,7 @@ export async function insertSighting(pool, sighting) {
       source_url, venue_published_ts, claim_text, claim_hash,
       evidence_tier, methodology_version, backfilled, created_by
     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    ON CONFLICT (event_id, venue, claim_hash) DO NOTHING
     RETURNING *
   `, [
     sighting.eventId,
@@ -25,7 +26,7 @@ export async function insertSighting(pool, sighting) {
     Boolean(sighting.backfilled),
     sighting.createdBy ?? 'jarvis-backend'
   ]);
-  return rows[0];
+  return rows[0] ?? null;
 }
 
 export async function insertMarketSnapshot(pool, sightingId, snapshot) {
@@ -60,6 +61,7 @@ export async function insertMarketSnapshot(pool, sightingId, snapshot) {
 // A failed snapshot is explicitly recorded and the DB alpha-eligibility view rejects it.
 export async function recordSightingWithSnapshot(pool, sighting, snapshotProvider) {
   const inserted = await insertSighting(pool, sighting);
+  if (!inserted) return { sighting: null, snapshot: null, duplicate: true };
   if (!sighting.tradableTicker || typeof snapshotProvider !== 'function') {
     return { sighting: inserted, snapshot: null };
   }
@@ -113,5 +115,22 @@ export async function insertAssessment(pool, row) {
     row.failedGates ?? [], row.recognitionBasis ?? {}, row.executionBasis ?? {},
     row.decision, row.createdBy ?? 'jarvis-backend'
   ]);
+  return rows[0];
+}
+
+export async function startAdapterRun(pool, adapter) {
+  const { rows } = await pool.query(`
+    INSERT INTO adapter_runs(adapter, status) VALUES ($1, 'RUNNING') RETURNING *
+  `, [adapter]);
+  return rows[0];
+}
+
+export async function finishAdapterRun(pool, runId, { status, itemsSeen = 0, itemsNew = 0, error = null }) {
+  const { rows } = await pool.query(`
+    UPDATE adapter_runs
+    SET finished_ts = clock_timestamp(), items_seen = $2, items_new = $3, status = $4, error = $5
+    WHERE run_id = $1
+    RETURNING *
+  `, [runId, itemsSeen, itemsNew, status, error]);
   return rows[0];
 }
