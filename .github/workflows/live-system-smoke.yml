@@ -1,0 +1,42 @@
+name: live-system-smoke
+
+on:
+  push:
+    paths:
+      - src/**
+      - scripts/system-update-smoke.js
+      - migrations/**
+      - package.json
+      - .github/workflows/live-system-smoke.yml
+  workflow_dispatch:
+
+jobs:
+  system-update:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: jarvis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/jarvis
+      SEC_USER_AGENT: JARVIS-2026 smoke-test contact@example.com
+      ARGUS_RECOGNITION_YELLOW_Z: '1'
+      ARGUS_RECOGNITION_RED_Z: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - run: npm run migrate
+      - run: npm run system:smoke
