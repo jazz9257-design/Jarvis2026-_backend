@@ -11,6 +11,7 @@
     "db:check": "node scripts/db-check.js",
     "db:smoke": "node scripts/db-smoke.js",
     "crypto:uni": "node scripts/run-uniswap-fee-check.js",
+    "crypto:pipeline-smoke": "node scripts/crypto-live-pipeline-smoke.js",
     "stock:edgar": "node scripts/run-edgar-smoke.js"
   },
   "dependencies": {
