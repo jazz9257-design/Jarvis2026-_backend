@@ -1,4 +1,4 @@
-import { claimHash } from './leadtime.js';
+import { claimHash, beneficiaryMateriality } from './leadtime.js';
 
 export async function insertSighting(pool, sighting) {
   const hash = sighting.claimHash ?? claimHash(sighting.claimText);
@@ -83,6 +83,12 @@ export async function recordSightingWithSnapshot(pool, sighting, snapshotProvide
 }
 
 export async function insertBeneficiaryResolution(pool, row) {
+  const ratios = beneficiaryMateriality({
+    relationshipAmountUsd: row.relationshipAmountUsd,
+    beneficiaryRevenueUsd: row.beneficiaryRevenueUsd,
+    beneficiarySegmentRevenueUsd: row.beneficiarySegmentRevenueUsd
+  });
+
   const { rows } = await pool.query(`
     INSERT INTO beneficiary_resolutions (
       sighting_id, catalyst_entity, beneficiary_ticker,
@@ -94,23 +100,74 @@ export async function insertBeneficiaryResolution(pool, row) {
   `, [
     row.sightingId, row.catalystEntity, row.beneficiaryTicker,
     row.relationshipAmountUsd ?? null, row.beneficiaryRevenueUsd ?? null, row.beneficiarySegmentRevenueUsd ?? null,
-    row.materialityRatioTotalRevenue ?? null, row.materialityRatioSegmentRevenue ?? null,
-    row.qualitativeMateriality ?? null, row.materialityStatus,
+    row.materialityRatioTotalRevenue ?? ratios.ratioTotalRevenue,
+    row.materialityRatioSegmentRevenue ?? ratios.ratioSegmentRevenue,
+    row.qualitativeMateriality ?? null, row.materialityStatus ?? 'UNRESOLVED',
     row.evidence ?? {}, row.notes ?? null
   ]);
   return rows[0];
 }
 
+export async function insertBeneficiaryMarketSnapshot(pool, resolutionId, snapshot) {
+  const { rows } = await pool.query(`
+    INSERT INTO beneficiary_market_snapshots (
+      resolution_id, captured_ts, ticker, price, ret_5d, ret_20d,
+      volume_ratio_5d_90d, news_count_7d, analyst_count, benchmark,
+      source_name, source_kind, status, raw_payload, missing_reason
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+    RETURNING *
+  `, [
+    resolutionId,
+    snapshot.capturedTs ?? new Date().toISOString(),
+    snapshot.ticker,
+    snapshot.price ?? null,
+    snapshot.ret5d ?? null,
+    snapshot.ret20d ?? null,
+    snapshot.volumeRatio5d90d ?? null,
+    snapshot.newsCount7d ?? null,
+    snapshot.analystCount ?? null,
+    snapshot.benchmark ?? null,
+    snapshot.sourceName,
+    snapshot.sourceKind,
+    snapshot.status,
+    snapshot.rawPayload ?? null,
+    snapshot.missingReason ?? null
+  ]);
+  return rows[0];
+}
+
+export async function recordBeneficiaryResolutionWithSnapshot(pool, row, snapshotProvider) {
+  const resolution = await insertBeneficiaryResolution(pool, row);
+  if (typeof snapshotProvider !== 'function') return { resolution, snapshot: null };
+
+  try {
+    const snapshot = await snapshotProvider(row.beneficiaryTicker);
+    return { resolution, snapshot: await insertBeneficiaryMarketSnapshot(pool, resolution.resolution_id, snapshot) };
+  } catch (error) {
+    const failed = await insertBeneficiaryMarketSnapshot(pool, resolution.resolution_id, {
+      ticker: row.beneficiaryTicker,
+      sourceName: snapshotProvider.name || 'market-provider',
+      sourceKind: 'API',
+      status: 'FAILED',
+      missingReason: error.message,
+      rawPayload: null
+    });
+    return { resolution, snapshot: failed, snapshotError: error.message };
+  }
+}
+
 export async function insertAssessment(pool, row) {
   const { rows } = await pool.query(`
     INSERT INTO assessments (
-      sighting_id, jarvis_state, argus_recognition, argus_execution,
+      sighting_id, beneficiary_resolution_id,
+      jarvis_state, argus_recognition, argus_execution,
       sentinel_state, stage, materiality_reason, failed_gates,
       recognition_basis, execution_basis, decision, created_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     RETURNING *
   `, [
-    row.sightingId, row.jarvisState, row.argusRecognition, row.argusExecution,
+    row.sightingId, row.beneficiaryResolutionId ?? null,
+    row.jarvisState, row.argusRecognition, row.argusExecution,
     row.sentinelState, row.stage, row.materialityReason ?? null,
     row.failedGates ?? [], row.recognitionBasis ?? {}, row.executionBasis ?? {},
     row.decision, row.createdBy ?? 'jarvis-backend'
