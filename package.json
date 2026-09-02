@@ -5,12 +5,15 @@
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
+    "start": "node src/index.js",
     "test": "node --test",
     "migrate": "node scripts/migrate.js",
     "db:check": "node scripts/db-check.js",
-    "crypto:uni": "node scripts/run-uniswap-fee-check.js"
+    "crypto:uni": "node scripts/run-uniswap-fee-check.js",
+    "stock:edgar": "node scripts/run-edgar-smoke.js"
   },
   "dependencies": {
+    "node-cron": "^3.0.3",
     "pg": "^8.13.1"
   }
 }
