@@ -6,9 +6,9 @@ export function claimHash(text) {
 }
 
 export function canonicalEventId({ lane, entity, eventType, eventDate }) {
-  const raw = [lane, entity, eventType, eventDate].map(v => String(v ?? '').trim().toUpperCase()).join('|');
-  if (raw.includes('||')) throw new Error('lane, entity, eventType and eventDate are required');
-  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 24);
+  const parts = [lane, entity, eventType, eventDate].map(v => String(v ?? '').trim().toUpperCase());
+  if (parts.some(v => !v)) throw new Error('lane, entity, eventType and eventDate are required');
+  return crypto.createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 24);
 }
 
 export function mean(values) {
@@ -38,7 +38,8 @@ export function rollingMeans(values, window) {
 
 // Compares the current 7-day mean with the distribution of historical 7-day means
 // generated from the 90 calendar days immediately before the current window.
-// This deliberately avoids treating a one-day spike as a validated anomaly.
+// This reduces sensitivity to one-day noise; it does not guarantee that an extreme one-day
+// event can never produce a large z-score.
 export function sevenDayAnomalyVsPrior90(dailyValues) {
   if (!Array.isArray(dailyValues)) throw new Error('dailyValues must be an array');
   if (dailyValues.length < 97) {
