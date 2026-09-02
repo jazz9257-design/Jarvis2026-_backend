@@ -59,8 +59,6 @@ export async function insertMarketSnapshot(pool, sightingId, snapshot) {
   return rows[0];
 }
 
-// Preserve the raw sighting even when the market provider is unavailable.
-// A failed snapshot is explicitly recorded and the DB alpha-eligibility view rejects it.
 export async function recordSightingWithSnapshot(pool, sighting, snapshotProvider) {
   const inserted = await insertSighting(pool, sighting);
   if (!inserted) return { sighting: null, snapshot: null, duplicate: true };
@@ -191,5 +189,22 @@ export async function finishAdapterRun(pool, runId, { status, itemsSeen = 0, ite
     WHERE run_id = $1
     RETURNING *
   `, [runId, itemsSeen, itemsNew, status, error]);
+  return rows[0];
+}
+
+export async function insertSystemRun(pool, row) {
+  const { rows } = await pool.query(`
+    INSERT INTO system_runs (
+      started_ts, finished_ts, trigger_type, implementation, complete, results
+    ) VALUES ($1,$2,$3,$4,$5,$6)
+    RETURNING *
+  `, [
+    row.startedTs,
+    row.finishedTs,
+    row.triggerType ?? 'MANUAL',
+    row.implementation ?? 'LT-1.0-CODE',
+    Boolean(row.complete),
+    jsonb(row.results ?? {})
+  ]);
   return rows[0];
 }
