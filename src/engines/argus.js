@@ -3,30 +3,52 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function evaluateRecognition(snapshot) {
+function raw(snapshot) {
+  if (!snapshot) return {};
+  if (snapshot.raw_payload && typeof snapshot.raw_payload === 'object') return snapshot.raw_payload;
+  if (snapshot.rawPayload && typeof snapshot.rawPayload === 'object') return snapshot.rawPayload;
+  return {};
+}
+
+export function evaluateRecognition(snapshot, {
+  yellowZ = Number(process.env.ARGUS_RECOGNITION_YELLOW_Z ?? 1),
+  redZ = Number(process.env.ARGUS_RECOGNITION_RED_Z ?? 2)
+} = {}) {
   if (!snapshot || snapshot.status === 'FAILED') {
     return { state: 'UNMEASURED', reason: 'No usable contemporaneous market snapshot.', basis: {} };
   }
 
-  const ret5d = num(snapshot.ret_5d ?? snapshot.ret5d);
-  const ret20d = num(snapshot.ret_20d ?? snapshot.ret20d);
-  const vol = num(snapshot.volume_ratio_5d_90d ?? snapshot.volumeRatio5d90d);
-  const basis = { ret5d, ret20d, volumeRatio5d90d: vol, price: num(snapshot.price), source: snapshot.source_name ?? snapshot.sourceName };
+  const metrics = raw(snapshot).recognitionMetrics ?? {};
+  const returnZ = num(metrics.current5dReturnZ);
+  const volumeZ = num(metrics.current5dVolumeZ);
+  const basis = {
+    price: num(snapshot.price),
+    ret5d: num(snapshot.ret_5d ?? snapshot.ret5d),
+    ret20d: num(snapshot.ret_20d ?? snapshot.ret20d),
+    volumeRatio5d90d: num(snapshot.volume_ratio_5d_90d ?? snapshot.volumeRatio5d90d),
+    current5dReturnZ: returnZ,
+    current5dVolumeZ: volumeZ,
+    source: snapshot.source_name ?? snapshot.sourceName,
+    yellowZ,
+    redZ
+  };
 
-  if (ret5d == null && ret20d == null && vol == null) {
-    return { state: 'UNMEASURED', reason: 'Snapshot lacks recognition metrics.', basis };
+  if (returnZ == null && volumeZ == null) {
+    return {
+      state: 'UNMEASURED',
+      reason: 'Snapshot exists, but self-relative recognition statistics are unavailable.',
+      basis
+    };
   }
 
-  // Recognition is intentionally conservative and based only on market behavior.
-  if ((ret5d != null && ret5d >= 0.20) || (ret20d != null && ret20d >= 0.35) || (vol != null && vol >= 2.5)) {
-    return { state: 'RED', reason: 'Price/volume behavior indicates substantial market recognition already occurred.', basis };
+  const maxPositiveZ = Math.max(returnZ ?? -Infinity, volumeZ ?? -Infinity);
+  if (maxPositiveZ >= redZ) {
+    return { state: 'RED', reason: 'Price/volume behavior is a >= red-threshold self-relative outlier; broad recognition likely occurred.', basis };
   }
-
-  if ((ret5d != null && ret5d >= 0.08) || (ret20d != null && ret20d >= 0.15) || (vol != null && vol >= 1.5)) {
-    return { state: 'YELLOW', reason: 'Some market recognition is visible; recognition gap is uncertain.', basis };
+  if (maxPositiveZ >= yellowZ) {
+    return { state: 'YELLOW', reason: 'Price/volume behavior is elevated versus its own history; recognition gap is uncertain.', basis };
   }
-
-  return { state: 'GREEN', reason: 'No large price/volume recognition signal is visible at first sight.', basis };
+  return { state: 'GREEN', reason: 'Price/volume behavior is not elevated versus its own history at first sight.', basis };
 }
 
 export function evaluateExecution({ recognition, setup = null, rewardRisk = null }) {
@@ -45,8 +67,8 @@ export function evaluateExecution({ recognition, setup = null, rewardRisk = null
   return { state: 'GREEN', reason: 'Recognition gap, valid setup, and >=3:1 reward/risk are all present.', basis: { ...setup, rewardRisk: Number(rewardRisk) } };
 }
 
-export function evaluateArgus({ snapshot, setup = null, rewardRisk = null }) {
-  const recognition = evaluateRecognition(snapshot);
+export function evaluateArgus({ snapshot, setup = null, rewardRisk = null, thresholds = undefined }) {
+  const recognition = evaluateRecognition(snapshot, thresholds);
   const execution = evaluateExecution({ recognition, setup, rewardRisk });
   return { recognition, execution };
 }
