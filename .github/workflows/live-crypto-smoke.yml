@@ -6,6 +6,7 @@ on:
       - .github/workflows/live-crypto-smoke.yml
   workflow_dispatch:
 
+# End-to-end live API + disposable Postgres proof. No production data is touched.
 jobs:
   uniswap-pipeline:
     runs-on: ubuntu-latest
