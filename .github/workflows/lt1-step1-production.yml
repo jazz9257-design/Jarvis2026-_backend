@@ -1,0 +1,52 @@
+name: lt1-step1-production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/lt1-step1-production.yml
+  workflow_dispatch:
+
+jobs:
+  migrate-and-accept:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Require Railway database secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "RAILWAY_DATABASE_URL GitHub Actions secret is not configured."
+            exit 2
+          fi
+      - name: LT-1.0 migrate
+        run: npm run lt1:migrate
+      - name: Acceptance 1 - describe sightings
+        run: psql "$DATABASE_URL" -c "\d sightings"
+      - name: Acceptance 2 - methodology versions
+        run: psql "$DATABASE_URL" -c "select version, activated_ts from methodology_versions;"
+      - name: Acceptance 3 - zero-row update
+        run: psql "$DATABASE_URL" -c "update sightings set first_sight_ts=now() where false;"
+      - name: Acceptance 4 - insert TEST
+        run: |
+          psql "$DATABASE_URL" -c "insert into sightings (sighting_id,entity,venue,venue_attention,venue_url,claim_text,claim_hash,evidence_tier,mri_at_first_sight,methodology_version) values (gen_random_uuid(),'TEST','EDGAR_FTS','LOW','https://x','migration smoke test row','h1','PRECURSOR','{\"price\":1}','LT-1.0') returning sighting_id;"
+      - name: Acceptance 5 - immutable first sight must error
+        run: |
+          set +e
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "update sightings set first_sight_ts=now()-interval '1 day' where entity='TEST';"
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "ERROR: immutable first_sight_ts update unexpectedly succeeded"
+            exit 1
+          fi
+          echo "EXPECTED_ERROR_OBSERVED"
+      - name: Acceptance 6 - TEST delete must be no-op and row survive
+        run: |
+          psql "$DATABASE_URL" -c "delete from sightings where entity='TEST';"
+          psql "$DATABASE_URL" -c "select entity,backfilled from sightings where entity='TEST';"
