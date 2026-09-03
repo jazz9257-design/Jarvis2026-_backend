@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "test": "node --test",
     "migrate": "node scripts/migrate.js",
+    "lt1:migrate": "node src/lt1/migrate.js",
     "db:check": "node scripts/db-check.js",
     "db:smoke": "node scripts/db-smoke.js",
     "crypto:uni": "node scripts/run-uniswap-fee-check.js",
