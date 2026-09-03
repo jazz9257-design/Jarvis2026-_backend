@@ -1,16 +1,62 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+CREATE TABLE IF NOT EXISTS methodology_versions (
+  version text PRIMARY KEY,
+  activated_ts timestamptz NOT NULL DEFAULT clock_timestamp(),
+  notes text NOT NULL DEFAULT ''
+);
+
 INSERT INTO methodology_versions(version, notes)
 VALUES ('LT-1.0', 'LT-1.0 code-enforced prospective first-sight ledger')
 ON CONFLICT (version) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS sightings (
+  sighting_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id text NOT NULL DEFAULT gen_random_uuid()::text,
+  lane text NOT NULL DEFAULT 'STOCK' CHECK (lane IN ('STOCK','CRYPTO')),
+  entity text NOT NULL,
+  tradable_ticker text,
+  venue text NOT NULL,
+  venue_attention text NOT NULL CHECK (venue_attention IN ('LOW','HIGH')),
+  source_url text NOT NULL,
+  venue_url text,
+  venue_published_ts timestamptz,
+  first_sight_ts timestamptz NOT NULL DEFAULT clock_timestamp(),
+  claim_text text NOT NULL,
+  claim_hash text NOT NULL,
+  evidence_tier text NOT NULL CHECK (evidence_tier IN ('SIGNAL','PRECURSOR','REPORTED','VERIFIED')),
+  mri_at_first_sight jsonb,
+  methodology_version text NOT NULL REFERENCES methodology_versions(version),
+  backfilled boolean NOT NULL DEFAULT false,
+  created_by text NOT NULL DEFAULT 'jarvis-backend',
+  UNIQUE(event_id, venue, claim_hash)
+);
+
 ALTER TABLE sightings
   ADD COLUMN IF NOT EXISTS venue_url text,
   ADD COLUMN IF NOT EXISTS mri_at_first_sight jsonb;
-
 ALTER TABLE sightings
   ALTER COLUMN event_id SET DEFAULT gen_random_uuid()::text,
   ALTER COLUMN lane SET DEFAULT 'STOCK';
+
+CREATE TABLE IF NOT EXISTS recognition_events (
+  recognition_event_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  sighting_id uuid NOT NULL REFERENCES sightings(sighting_id),
+  event_ts timestamptz NOT NULL DEFAULT clock_timestamp(),
+  event_type text NOT NULL,
+  evidence jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS market_sessions (
+  exchange text NOT NULL,
+  session_date date NOT NULL,
+  source_name text NOT NULL,
+  loaded_ts timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(exchange, session_date)
+);
+
+CREATE INDEX IF NOT EXISTS sightings_lane_time_idx ON sightings(lane, first_sight_ts);
+CREATE INDEX IF NOT EXISTS sightings_ticker_time_idx ON sightings(tradable_ticker, first_sight_ts);
 
 CREATE OR REPLACE FUNCTION lt1_prepare_sighting() RETURNS trigger AS $$
 BEGIN
