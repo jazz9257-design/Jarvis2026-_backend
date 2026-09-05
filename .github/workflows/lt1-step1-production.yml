@@ -1,3 +1,4 @@
+# Supabase production acceptance for LT-1.0
 name: lt1-step1-production
 
 on:
