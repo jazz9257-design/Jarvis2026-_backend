@@ -11,17 +11,18 @@ jobs:
   migrate-and-accept:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: ${{ secrets.RAILWAY_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+      PGSSLMODE: require
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - run: npm install
-      - name: Require Railway database secret
+      - name: Require Supabase database secret
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "RAILWAY_DATABASE_URL GitHub Actions secret is not configured."
+            echo "SUPABASE_DATABASE_URL GitHub Actions secret is not configured."
             exit 2
           fi
       - name: LT-1.0 migrate
