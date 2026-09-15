@@ -9,7 +9,7 @@ function precursorPriority(context) {
   const relatedOrders = Number(precursorContext.priorRelatedOrderCount ?? 0);
   const commitments = Number(precursorContext.priorCapitalCommitmentCount ?? 0);
 
-  if (relatedOrders >= 2 && commitments >= 1) {
+  if (relatedOrders >= 1 && commitments >= 1) {
     return {
       state: 'IMMEDIATE_REVIEW',
       reason: 'Repeated related orders plus an earlier capital/capacity commitment require immediate JARVIS × ARGUS review.'
