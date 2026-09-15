@@ -40,6 +40,13 @@ function resolutionFromRow(row) {
   };
 }
 
+function precursorContextFromRow(row) {
+  return {
+    priorRelatedOrderCount: Number(row.prior_related_order_count ?? 0),
+    priorCapitalCommitmentCount: Number(row.prior_capital_commitment_count ?? 0)
+  };
+}
+
 function deriveRiskEvidence(row) {
   if (row.lane === 'STOCK') {
     return {
@@ -78,6 +85,7 @@ export async function loadDecisionContexts(pool, { hours = 72, limit = 100 } = {
       ms.volume_ratio_5d_90d, ms.source_name AS market_source_name, ms.raw_payload,
       br.resolution_id, br.materiality_status, br.materiality_ratio_total_revenue,
       br.materiality_ratio_segment_revenue, br.beneficiary_ticker,
+      pc.prior_related_order_count, pc.prior_capital_commitment_count,
       bms.beneficiary_snapshot_id,
       bms.status AS beneficiary_snapshot_status,
       bms.price AS beneficiary_price,
@@ -98,6 +106,27 @@ export async function loadDecisionContexts(pool, { hours = 72, limit = 100 } = {
       ORDER BY r.assessed_ts DESC LIMIT 1
     ) br ON true
     LEFT JOIN LATERAL (
+      SELECT
+        count(DISTINCT ps.sighting_id) FILTER (
+          WHERE ps.claim_text ~* '(purchase order|supply agreement|contract|award|procurement)'
+        ) AS prior_related_order_count,
+        count(DISTINCT ps.sighting_id) FILTER (
+          WHERE ps.claim_text ~* '(capital commitment|capacity|financing|funding|permit|interconnection|expansion)'
+        ) AS prior_capital_commitment_count
+      FROM sightings ps
+      LEFT JOIN beneficiary_resolutions pbr ON pbr.sighting_id = ps.sighting_id
+      WHERE s.lane = 'STOCK'
+        AND ps.lane = 'STOCK'
+        AND ps.first_sight_ts < s.first_sight_ts
+        AND (
+          ps.entity = s.entity
+          OR (
+            COALESCE(br.beneficiary_ticker, s.tradable_ticker) IS NOT NULL
+            AND COALESCE(pbr.beneficiary_ticker, ps.tradable_ticker) = COALESCE(br.beneficiary_ticker, s.tradable_ticker)
+          )
+        )
+    ) pc ON true
+    LEFT JOIN LATERAL (
       SELECT bm.* FROM beneficiary_market_snapshots bm
       WHERE bm.resolution_id = br.resolution_id
       ORDER BY bm.captured_ts ASC LIMIT 1
@@ -117,9 +146,10 @@ export async function runDecisionEngines(pool, options = {}) {
     const sighting = row;
     const snapshot = snapshotFromRow(row);
     const beneficiaryResolution = resolutionFromRow(row);
+    const precursorContext = precursorContextFromRow(row);
     const riskEvidence = deriveRiskEvidence(row);
 
-    const jarvis = evaluateJarvis({ sighting, beneficiaryResolution, cryptoSubstance: {} });
+    const jarvis = evaluateJarvis({ sighting, beneficiaryResolution, precursorContext, cryptoSubstance: {} });
     const sentinel = evaluateSentinel({ sighting, riskEvidence });
     const argus = evaluateArgus({ snapshot, setup: null, rewardRisk: null });
     const decision = decisionFor({ jarvis, argus, sentinel });
@@ -145,7 +175,7 @@ export async function runDecisionEngines(pool, options = {}) {
       recognitionBasis: argus.recognition.basis,
       executionBasis: argus.execution.basis,
       decision,
-      createdBy: 'decision-engine-v1'
+      createdBy: 'decision-engine-v1.1-precursor'
     });
 
     evaluations.push({
@@ -154,6 +184,9 @@ export async function runDecisionEngines(pool, options = {}) {
       entity: row.entity,
       ticker: row.beneficiary_ticker ?? row.tradable_ticker ?? null,
       jarvis: jarvis.state,
+      precursorPriority: jarvis.precursor?.state ?? null,
+      priorRelatedOrderCount: precursorContext.priorRelatedOrderCount,
+      priorCapitalCommitmentCount: precursorContext.priorCapitalCommitmentCount,
       argusRecognition: argus.recognition.state,
       argusExecution: argus.execution.state,
       sentinel: sentinel.state,

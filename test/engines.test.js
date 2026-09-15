@@ -23,6 +23,45 @@ test('JARVIS stock green requires reported evidence and materiality pass', () =>
   assert.equal(r.state, 'GREEN');
 });
 
+test('JARVIS precursor-only evidence stays yellow even when materiality passes', () => {
+  const r = evaluateJarvis({
+    sighting: { lane: 'STOCK', evidence_tier: 'PRECURSOR' },
+    beneficiaryResolution: { materiality_status: 'PASS' }
+  });
+  assert.equal(r.state, 'YELLOW');
+  assert.equal(r.precursor.state, 'INVESTIGATE');
+});
+
+test('JARVIS elevates when a prior related order exists', () => {
+  const r = evaluateJarvis({
+    sighting: stockSighting,
+    beneficiaryResolution: { materiality_status: 'PASS' },
+    precursorContext: { priorRelatedOrderCount: 1, priorCapitalCommitmentCount: 0 }
+  });
+  assert.equal(r.state, 'GREEN');
+  assert.equal(r.precursor.state, 'ELEVATE');
+});
+
+test('JARVIS demands immediate review for repeated orders plus capital commitment', () => {
+  const r = evaluateJarvis({
+    sighting: stockSighting,
+    beneficiaryResolution: { materiality_status: 'PASS' },
+    precursorContext: { priorRelatedOrderCount: 2, priorCapitalCommitmentCount: 1 }
+  });
+  assert.equal(r.state, 'GREEN');
+  assert.equal(r.precursor.state, 'IMMEDIATE_REVIEW');
+});
+
+test('Early discovery never overrides failed materiality', () => {
+  const r = evaluateJarvis({
+    sighting: stockSighting,
+    beneficiaryResolution: { materiality_status: 'FAIL' },
+    precursorContext: { priorRelatedOrderCount: 3, priorCapitalCommitmentCount: 2 }
+  });
+  assert.equal(r.state, 'RED');
+  assert.equal(r.precursor.state, 'IMMEDIATE_REVIEW');
+});
+
 test('ARGUS recognition uses self-relative z-score', () => {
   const quiet = evaluateRecognition({ status: 'FULL', raw_payload: { recognitionMetrics: { current5dReturnZ: 0.2, current5dVolumeZ: 0.3 } } }, { yellowZ: 1, redZ: 2 });
   const warm = evaluateRecognition({ status: 'FULL', raw_payload: { recognitionMetrics: { current5dReturnZ: 1.3, current5dVolumeZ: 0.4 } } }, { yellowZ: 1, redZ: 2 });
